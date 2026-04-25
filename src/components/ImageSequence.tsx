@@ -19,7 +19,7 @@ export const ImageSequence = ({ progress }: { progress: any }) => {
   useEffect(() => {
     // Load images progressively to avoid flooding the network
     let isMounted = true;
-    
+
     const loadBatch = async (start: number) => {
       const end = Math.min(start + PRELOAD_BATCH_SIZE, TOTAL_FRAMES);
       const promises = [];
@@ -63,23 +63,24 @@ export const ImageSequence = ({ progress }: { progress: any }) => {
       );
 
       const img = images[Math.max(0, frameIndex)];
-      
+
       const draw = () => {
         if (!canvas || !ctx) return;
         const { width, height } = canvas;
-        
+
         // Ensure image is loaded before drawing
         if (!img.complete || img.naturalWidth === 0) return;
 
         const imgRatio = img.naturalWidth / img.naturalHeight;
         const canvasRatio = width / height;
-        
+
         let drawWidth, drawHeight, offsetX, offsetY;
 
         if (imgRatio > canvasRatio) {
           drawHeight = height;
           drawWidth = height * imgRatio;
-          offsetX = (width - drawWidth) / 2;
+          // Shift focus to the left (30%) instead of center (50%) to keep the chair in view
+          offsetX = (width - drawWidth) * 0.3;
           offsetY = 0;
         } else {
           drawWidth = width;
@@ -127,24 +128,30 @@ export const ImageSequence = ({ progress }: { progress: any }) => {
   }, [images, progress, loadedCount]);
 
   return (
-    <div className="sticky top-0 w-full h-screen h-[100dvh] z-0 pointer-events-none overflow-hidden bg-black">
-      <canvas 
-        ref={canvasRef} 
-        style={{ width: '100%', height: '100%' }}
-        className="object-cover grayscale-[0.3]" 
+    <div className="sticky top-0 w-full h-[100dvh] z-0 pointer-events-none overflow-hidden bg-black">
+      <canvas
+        ref={canvasRef}
+        style={{
+          width: '100%',
+          height: '100%',
+          filter: 'contrast(1.1) brightness(1.05) saturate(1.05)', // Boosted for clarity
+          imageRendering: '-webkit-optimize-contrast' as any
+        }}
+        className="object-cover"
       />
-      
-      {/* Base Gradient Overlay (Top and Bottom) */}
-      <div className="absolute inset-0 bg-gradient-to-b from-black/80 via-transparent to-[#0a0a0a] z-[1]"></div>
-      
-      {/* Corner Specific Darkening */}
-      <div className="absolute inset-0 z-[2] bg-[radial-gradient(circle_at_bottom_left,rgba(0,0,0,1)_0%,transparent_50%),radial-gradient(circle_at_bottom_right,rgba(0,0,0,1)_0%,transparent_50%)]"></div>
-      
-      {/* Bottom Fade-out for Section Blend */}
-      <div className="absolute bottom-0 left-0 w-full h-1/2 bg-gradient-to-t from-[#0a0a0a] via-[#0a0a0a]/50 to-transparent z-[3]"></div>
-      
-      {/* Subtle Side Vignette */}
-      <div className="absolute inset-0 z-[4] bg-gradient-to-r from-black/40 via-transparent to-black/40"></div>
+
+      {/* Technical Dot Grid to mask compression artifacts */}
+      <div className="absolute inset-0 z-[1] opacity-[0.25] pointer-events-none bg-[radial-gradient(#fff_0.5px,transparent_0.5px)] bg-[size:4px_4px]"></div>
+
+      {/* Reduced Overlays for better clarity */}
+      {/* Top and Bottom Gradient */}
+      <div className="absolute inset-0 bg-gradient-to-b from-black/40 via-transparent to-[#0a0a0a]/60 z-[2]"></div>
+
+      {/* Very Subtle Side Vignette */}
+      <div className="absolute inset-0 z-[3] bg-gradient-to-r from-black/20 via-transparent to-black/20"></div>
+
+      {/* Bottom Blend Overlay */}
+      <div className="absolute bottom-0 left-0 w-full h-1/4 bg-gradient-to-t from-[#0a0a0a] to-transparent z-[4]"></div>
 
       {/* Loading Indicator for Mobile */}
       {loadedCount < TOTAL_FRAMES && (

@@ -88,7 +88,7 @@ export default function Artisans() {
               className={`flex flex-col ${idx % 2 === 0 ? "lg:flex-row" : "lg:flex-row-reverse"} gap-20 items-center relative group`}
             >
               <div className="lg:w-1/2 aspect-[4/5] rounded-[50px] overflow-hidden grayscale hover:grayscale-0 transition-all duration-1000 border border-white/10 relative">
-                <img src={a.img} alt={a.name} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-1000" />
+                <img src={a.img} alt={a.name} loading="lazy" className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-1000" />
                 
                 {/* subtle identifier */}
                 <div className="absolute top-8 left-8 p-3 bg-black/40 backdrop-blur-md border border-white/10 rounded-xl opacity-0 group-hover:opacity-100 transition-opacity duration-500">

@@ -1,24 +1,59 @@
-import { useRef, useMemo, useEffect } from "react";
+import { useRef, useMemo, useEffect, useState } from "react";
 
 const TOTAL_FRAMES = 192;
+const PRELOAD_BATCH_SIZE = 20;
 
 export const ImageSequence = ({ progress }: { progress: any }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const [loadedCount, setLoadedCount] = useState(0);
 
   const images = useMemo(() => {
     const imgArray: HTMLImageElement[] = [];
     for (let i = 1; i <= TOTAL_FRAMES; i++) {
       const img = new Image();
-      img.src = `/photos/${i.toString().padStart(4, "0")}.jpg`;
       imgArray.push(img);
     }
     return imgArray;
   }, []);
 
   useEffect(() => {
+    // Load images progressively to avoid flooding the network
+    let isMounted = true;
+    
+    const loadBatch = async (start: number) => {
+      const end = Math.min(start + PRELOAD_BATCH_SIZE, TOTAL_FRAMES);
+      const promises = [];
+
+      for (let i = start; i < end; i++) {
+        const img = images[i];
+        promises.push(new Promise((resolve) => {
+          img.onload = resolve;
+          img.onerror = resolve; // Continue even if one fails
+          img.src = `/photos/${(i + 1).toString().padStart(4, "0")}.jpg`;
+        }));
+      }
+
+      await Promise.all(promises);
+      if (isMounted) {
+        setLoadedCount(end);
+        if (end < TOTAL_FRAMES) {
+          // Small delay before next batch to prioritize UI responsiveness
+          setTimeout(() => loadBatch(end), 50);
+        }
+      }
+    };
+
+    loadBatch(0);
+
+    return () => {
+      isMounted = false;
+    };
+  }, [images]);
+
+  useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-    const ctx = canvas.getContext("2d");
+    const ctx = canvas.getContext("2d", { alpha: false }); // Performance optimization
     if (!ctx) return;
 
     const render = (val: number) => {
@@ -32,7 +67,11 @@ export const ImageSequence = ({ progress }: { progress: any }) => {
       const draw = () => {
         if (!canvas || !ctx) return;
         const { width, height } = canvas;
-        const imgRatio = img.width / img.height;
+        
+        // Ensure image is loaded before drawing
+        if (!img.complete || img.naturalWidth === 0) return;
+
+        const imgRatio = img.naturalWidth / img.naturalHeight;
         const canvasRatio = width / height;
         
         let drawWidth, drawHeight, offsetX, offsetY;
@@ -49,7 +88,6 @@ export const ImageSequence = ({ progress }: { progress: any }) => {
           offsetY = (height - drawHeight) / 2;
         }
 
-        ctx.clearRect(0, 0, width, height);
         ctx.drawImage(img, offsetX, offsetY, drawWidth, drawHeight);
       };
 
@@ -60,10 +98,17 @@ export const ImageSequence = ({ progress }: { progress: any }) => {
       }
     };
 
+    let resizeTimeout: ReturnType<typeof setTimeout>;
     const handleResize = () => {
-      canvas.width = window.innerWidth;
-      canvas.height = window.innerHeight;
-      render(progress.get());
+      clearTimeout(resizeTimeout);
+      resizeTimeout = setTimeout(() => {
+        if (!canvas) return;
+        const dpr = window.devicePixelRatio || 1;
+        canvas.width = window.innerWidth * dpr;
+        canvas.height = window.innerHeight * dpr;
+        ctx.scale(dpr, dpr);
+        render(progress.get());
+      }, 100);
     };
 
     handleResize();
@@ -75,16 +120,18 @@ export const ImageSequence = ({ progress }: { progress: any }) => {
     });
 
     return () => {
+      clearTimeout(resizeTimeout);
       window.removeEventListener("resize", handleResize);
       unsubscribe();
     };
-  }, [images, progress]);
+  }, [images, progress, loadedCount]);
 
   return (
-    <div className="sticky top-0 w-full h-screen z-0 pointer-events-none overflow-hidden">
+    <div className="sticky top-0 w-full h-screen h-[100dvh] z-0 pointer-events-none overflow-hidden bg-black">
       <canvas 
         ref={canvasRef} 
-        className="w-full h-full object-cover grayscale-[0.3]" 
+        style={{ width: '100%', height: '100%' }}
+        className="object-cover grayscale-[0.3]" 
       />
       
       {/* Base Gradient Overlay (Top and Bottom) */}
@@ -98,6 +145,13 @@ export const ImageSequence = ({ progress }: { progress: any }) => {
       
       {/* Subtle Side Vignette */}
       <div className="absolute inset-0 z-[4] bg-gradient-to-r from-black/40 via-transparent to-black/40"></div>
+
+      {/* Loading Indicator for Mobile */}
+      {loadedCount < TOTAL_FRAMES && (
+        <div className="absolute bottom-10 right-10 z-[10] text-[10px] font-mono text-white/30 uppercase tracking-[0.2em]">
+          Loading Experience {Math.round((loadedCount / TOTAL_FRAMES) * 100)}%
+        </div>
+      )}
     </div>
   );
 };

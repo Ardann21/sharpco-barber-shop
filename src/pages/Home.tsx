@@ -25,7 +25,7 @@ export default function Home() {
         <ImageSequence progress={smoothProgress} />
         
         {/* Hero Content Overlay */}
-        <div className="sticky top-0 h-screen flex flex-col items-center justify-center px-6 text-center z-10">
+        <div className="sticky top-0 h-[100dvh] flex flex-col items-center justify-center px-6 text-center z-10">
           <motion.div
             style={{ 
               opacity: useTransform(smoothProgress, [0, 0.4, 0.6, 1], [1, 1, 0, 0]),

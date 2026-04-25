@@ -53,6 +53,7 @@ export default function Gallery() {
                 <img 
                   src={`/photos/${f.toString().padStart(4, '0')}.jpg`} 
                   alt={`Gallery ${f}`} 
+                  loading="lazy"
                   className="w-full h-auto group-hover:scale-105 transition-transform duration-1000"
                 />
                 

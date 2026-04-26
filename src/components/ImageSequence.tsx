@@ -7,7 +7,7 @@ export const ImageSequence = ({ progress }: { progress: any }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [loadedCount, setLoadedCount] = useState(0);
   const imagesRef = useRef<HTMLImageElement[]>([]);
-  
+
   const getImagePath = useCallback((index: number) => {
     const fileName = (index + 1).toString().padStart(4, "0");
     const baseUrl = ((import.meta as any).env?.BASE_URL || "").replace(/\/$/, "");
@@ -17,7 +17,7 @@ export const ImageSequence = ({ progress }: { progress: any }) => {
   // Initialize images array once
   useEffect(() => {
     if (imagesRef.current.length > 0) return;
-    
+
     const imgArray: HTMLImageElement[] = [];
     for (let i = 1; i <= TOTAL_FRAMES; i++) {
       const img = new Image();
@@ -88,7 +88,7 @@ export const ImageSequence = ({ progress }: { progress: any }) => {
 
     const drawImg = (img: HTMLImageElement, opacity: number) => {
       if (!img.complete || img.naturalWidth === 0) return false;
-      
+
       const imgRatio = img.naturalWidth / img.naturalHeight;
       const canvasRatio = width / height;
 
@@ -112,7 +112,7 @@ export const ImageSequence = ({ progress }: { progress: any }) => {
 
     // Draw base frame
     const ready1 = drawImg(img1, 1);
-    
+
     // Draw cross-fade frame
     if (ready1 && ratio > 0.01 && img2) {
       drawImg(img2, ratio);

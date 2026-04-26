@@ -13,15 +13,15 @@ export default function Home() {
   });
 
   const smoothProgress = useSpring(scrollYProgress, {
-    stiffness: 40,
-    damping: 26,
+    stiffness: 25,
+    damping: 20,
     restDelta: 0.001
   });
 
   return (
     <div className="bg-[#060606] relative">
       {/* Scrollable Container for Hero Scrollytell */}
-      <div ref={heroRef} className="relative h-[300vh] z-10">
+      <div ref={heroRef} className="relative h-[500vh] z-10">
         <ImageSequence progress={smoothProgress} />
 
         {/* Hero Content Overlay */}

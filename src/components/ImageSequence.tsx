@@ -35,11 +35,15 @@ export const ImageSequence = ({ progress }: { progress: any }) => {
         const img = imagesRef.current[i];
         if (!img.src) {
           promises.push(new Promise((resolve) => {
-            img.onload = resolve;
-            img.onerror = () => {
-              console.error(`Failed to load image: ${img.src}`);
+            img.onload = async () => {
+              try {
+                if (img.decode) await img.decode();
+              } catch (e) {
+                // Silently handle decode errors
+              }
               resolve(null);
             };
+            img.onerror = () => resolve(null);
             img.src = getImagePath(i);
           }));
         }

@@ -35,7 +35,8 @@ export const ImageSequence = ({ progress }: { progress: any }) => {
           };
           // Use a more robust path that works in production
           const fileName = (i + 1).toString().padStart(4, "0");
-          img.src = `${import.meta.env.BASE_URL.replace(/\/$/, "")}/photos/${fileName}.jpg`;
+          const baseUrl = (import.meta as any).env?.BASE_URL || "";
+          img.src = `${baseUrl.replace(/\/$/, "")}/photos/${fileName}.jpg`;
         }));
       }
 

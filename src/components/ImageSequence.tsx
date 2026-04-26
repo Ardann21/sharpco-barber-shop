@@ -7,8 +7,6 @@ export const ImageSequence = ({ progress }: { progress: any }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [loadedCount, setLoadedCount] = useState(0);
   const imagesRef = useRef<HTMLImageElement[]>([]);
-  const requestRef = useRef<number>(0);
-  const lastProgress = useRef<number>(-1);
   
   const getImagePath = useCallback((index: number) => {
     const fileName = (index + 1).toString().padStart(4, "0");
@@ -27,6 +25,7 @@ export const ImageSequence = ({ progress }: { progress: any }) => {
     }
     imagesRef.current = imgArray;
 
+    // Start loading images in batches
     let isMounted = true;
     const loadBatch = async (start: number) => {
       const end = Math.min(start + PRELOAD_BATCH_SIZE, TOTAL_FRAMES);
@@ -37,7 +36,10 @@ export const ImageSequence = ({ progress }: { progress: any }) => {
         if (!img.src) {
           promises.push(new Promise((resolve) => {
             img.onload = resolve;
-            img.onerror = () => resolve(null);
+            img.onerror = () => {
+              console.error(`Failed to load image: ${img.src}`);
+              resolve(null);
+            };
             img.src = getImagePath(i);
           }));
         }
@@ -56,73 +58,69 @@ export const ImageSequence = ({ progress }: { progress: any }) => {
     return () => { isMounted = false; };
   }, [getImagePath]);
 
-  // High-performance render with cross-fading and rAF
+  // Main render logic with frame cross-fading
   const render = useCallback((val: number) => {
-    // Throttling: only render if progress changed significantly
-    if (Math.abs(val - lastProgress.current) < 0.0001) return;
-    lastProgress.current = val;
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d", { alpha: false });
+    if (!ctx) return;
 
-    const draw = () => {
-      const canvas = canvasRef.current;
-      if (!canvas) return;
-      const ctx = canvas.getContext("2d", { alpha: false });
-      if (!ctx) return;
+    // Calculate fractional frame index for cross-fading
+    const floatIndex = val * (TOTAL_FRAMES - 1);
+    const frame1 = Math.floor(floatIndex);
+    const frame2 = Math.min(TOTAL_FRAMES - 1, frame1 + 1);
+    const ratio = floatIndex - frame1;
 
-      const floatIndex = val * (TOTAL_FRAMES - 1);
-      const frame1 = Math.floor(floatIndex);
-      const frame2 = Math.min(TOTAL_FRAMES - 1, frame1 + 1);
-      const ratio = floatIndex - frame1;
+    const img1 = imagesRef.current[frame1];
+    const img2 = imagesRef.current[frame2];
 
-      const img1 = imagesRef.current[frame1];
-      const img2 = imagesRef.current[frame2];
+    if (!img1) return;
 
-      if (!img1) return;
-      if (!img1.src) img1.src = getImagePath(frame1);
-      if (img2 && !img2.src) img2.src = getImagePath(frame2);
+    // Ensure images have sources
+    if (!img1.src) img1.src = getImagePath(frame1);
+    if (img2 && !img2.src) img2.src = getImagePath(frame2);
 
-      const { width, height } = canvas;
-
-      const drawImg = (img: HTMLImageElement, opacity: number) => {
-        if (!img.complete || img.naturalWidth === 0) return false;
-        
-        const imgRatio = img.naturalWidth / img.naturalHeight;
-        const canvasRatio = width / height;
-
-        let dW, dH, oX, oY;
-        if (imgRatio > canvasRatio) {
-          dH = height;
-          dW = height * imgRatio;
-          oX = (width - dW) * 0.3;
-          oY = 0;
-        } else {
-          dW = width;
-          dH = width / imgRatio;
-          oX = 0;
-          oY = (height - dH) / 2;
-        }
-
-        ctx.globalAlpha = opacity;
-        ctx.drawImage(img, oX, oY, dW, dH);
-        return true;
-      };
-
-      // Draw base frame
-      const ready1 = drawImg(img1, 1);
+    const drawFrame = (img: HTMLImageElement, opacity: number = 1) => {
+      if (!img.complete || img.naturalWidth === 0) return false;
       
-      // Cross-fade second frame
-      if (ready1 && ratio > 0.01 && img2) {
-        drawImg(img2, ratio);
+      const { width, height } = canvas;
+      const imgRatio = img.naturalWidth / img.naturalHeight;
+      const canvasRatio = width / height;
+
+      let drawWidth, drawHeight, offsetX, offsetY;
+
+      if (imgRatio > canvasRatio) {
+        drawHeight = height;
+        drawWidth = height * imgRatio;
+        offsetX = (width - drawWidth) * 0.3;
+        offsetY = 0;
+      } else {
+        drawWidth = width;
+        drawHeight = width / imgRatio;
+        offsetX = 0;
+        offsetY = (height - drawHeight) / 2;
       }
 
-      // Re-trigger if images weren't ready
-      if (!img1.complete) img1.onload = () => render(val);
-      if (img2 && !img2.complete) img2.onload = () => render(val);
+      ctx.globalAlpha = opacity;
+      ctx.drawImage(img, offsetX, offsetY, drawWidth, drawHeight);
+      return true;
     };
 
-    if (requestRef.current) cancelAnimationFrame(requestRef.current);
-    requestRef.current = requestAnimationFrame(draw);
+    // Draw frame 1 (base)
+    const success1 = drawFrame(img1, 1);
+    
+    // Draw frame 2 (overlay) with ratio opacity for smooth cross-fade
+    if (success1 && ratio > 0.05 && img2) {
+      drawFrame(img2, ratio);
+    }
+
+    // If images aren't ready, set onload to re-trigger render
+    if (!img1.complete) img1.onload = () => render(val);
+    if (img2 && !img2.complete) img2.onload = () => render(val);
+    
   }, [getImagePath]);
 
+  // Handle resize and initial render
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -134,7 +132,6 @@ export const ImageSequence = ({ progress }: { progress: any }) => {
       canvas.width = window.innerWidth * dpr;
       canvas.height = window.innerHeight * dpr;
       ctx.scale(dpr, dpr);
-      lastProgress.current = -1; // Force re-render
       render(progress.get());
     };
 
@@ -148,10 +145,10 @@ export const ImageSequence = ({ progress }: { progress: any }) => {
     return () => {
       window.removeEventListener("resize", handleResize);
       unsubscribe();
-      if (requestRef.current) cancelAnimationFrame(requestRef.current);
     };
   }, [progress, render]);
 
+  // Re-render when new images are loaded to update the view
   useEffect(() => {
     if (loadedCount > 0) {
       render(progress.get());

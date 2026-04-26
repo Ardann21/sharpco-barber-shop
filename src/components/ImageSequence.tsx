@@ -58,32 +58,32 @@ export const ImageSequence = ({ progress }: { progress: any }) => {
     return () => { isMounted = false; };
   }, [getImagePath]);
 
-  // Main render logic
+  // Main render logic with frame cross-fading
   const render = useCallback((val: number) => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext("2d", { alpha: false });
     if (!ctx) return;
 
-    const frameIndex = Math.min(
-      TOTAL_FRAMES - 1,
-      Math.floor(val * TOTAL_FRAMES)
-    );
+    // Calculate fractional frame index for cross-fading
+    const floatIndex = val * (TOTAL_FRAMES - 1);
+    const frame1 = Math.floor(floatIndex);
+    const frame2 = Math.min(TOTAL_FRAMES - 1, frame1 + 1);
+    const ratio = floatIndex - frame1;
 
-    const img = imagesRef.current[Math.max(0, frameIndex)];
-    if (!img) return;
+    const img1 = imagesRef.current[frame1];
+    const img2 = imagesRef.current[frame2];
 
-    // IMPORTANT: If image doesn't have a src yet (preloader hasn't reached it), 
-    // load it immediately to avoid freezing during scroll.
-    if (!img.src) {
-      img.src = getImagePath(Math.max(0, frameIndex));
-    }
+    if (!img1) return;
 
-    const draw = () => {
-      if (!canvas || !ctx) return;
+    // Ensure images have sources
+    if (!img1.src) img1.src = getImagePath(frame1);
+    if (img2 && !img2.src) img2.src = getImagePath(frame2);
+
+    const drawFrame = (img: HTMLImageElement, opacity: number = 1) => {
+      if (!img.complete || img.naturalWidth === 0) return false;
+      
       const { width, height } = canvas;
-      if (!img.complete || img.naturalWidth === 0) return;
-
       const imgRatio = img.naturalWidth / img.naturalHeight;
       const canvasRatio = width / height;
 
@@ -92,7 +92,7 @@ export const ImageSequence = ({ progress }: { progress: any }) => {
       if (imgRatio > canvasRatio) {
         drawHeight = height;
         drawWidth = height * imgRatio;
-        offsetX = (width - drawWidth) * 0.3; // Focus on the chair
+        offsetX = (width - drawWidth) * 0.3;
         offsetY = 0;
       } else {
         drawWidth = width;
@@ -101,14 +101,23 @@ export const ImageSequence = ({ progress }: { progress: any }) => {
         offsetY = (height - drawHeight) / 2;
       }
 
+      ctx.globalAlpha = opacity;
       ctx.drawImage(img, offsetX, offsetY, drawWidth, drawHeight);
+      return true;
     };
 
-    if (img.complete) {
-      draw();
-    } else {
-      img.onload = draw;
+    // Draw frame 1 (base)
+    const success1 = drawFrame(img1, 1);
+    
+    // Draw frame 2 (overlay) with ratio opacity for smooth cross-fade
+    if (success1 && ratio > 0.05 && img2) {
+      drawFrame(img2, ratio);
     }
+
+    // If images aren't ready, set onload to re-trigger render
+    if (!img1.complete) img1.onload = () => render(val);
+    if (img2 && !img2.complete) img2.onload = () => render(val);
+    
   }, [getImagePath]);
 
   // Handle resize and initial render

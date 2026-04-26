@@ -62,14 +62,14 @@ export const ImageSequence = ({ progress }: { progress: any }) => {
     return () => { isMounted = false; };
   }, [getImagePath]);
 
-  // Main render logic with frame cross-fading
-  const render = useCallback((val: number) => {
+  // Main render logic (Synchronized)
+  const render = useCallback(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext("2d", { alpha: false });
     if (!ctx) return;
 
-    // Calculate fractional frame index for cross-fading
+    const val = progress.get();
     const floatIndex = val * (TOTAL_FRAMES - 1);
     const frame1 = Math.floor(floatIndex);
     const frame2 = Math.min(TOTAL_FRAMES - 1, frame1 + 1);
@@ -84,80 +84,71 @@ export const ImageSequence = ({ progress }: { progress: any }) => {
     if (!img1.src) img1.src = getImagePath(frame1);
     if (img2 && !img2.src) img2.src = getImagePath(frame2);
 
-    const drawFrame = (img: HTMLImageElement, opacity: number = 1) => {
+    const { width, height } = canvas;
+
+    const drawImg = (img: HTMLImageElement, opacity: number) => {
       if (!img.complete || img.naturalWidth === 0) return false;
       
-      const { width, height } = canvas;
       const imgRatio = img.naturalWidth / img.naturalHeight;
       const canvasRatio = width / height;
 
-      let drawWidth, drawHeight, offsetX, offsetY;
-
+      let dW, dH, oX, oY;
       if (imgRatio > canvasRatio) {
-        drawHeight = height;
-        drawWidth = height * imgRatio;
-        offsetX = (width - drawWidth) * 0.3;
-        offsetY = 0;
+        dH = height;
+        dW = height * imgRatio;
+        oX = (width - dW) * 0.3;
+        oY = 0;
       } else {
-        drawWidth = width;
-        drawHeight = width / imgRatio;
-        offsetX = 0;
-        offsetY = (height - drawHeight) / 2;
+        dW = width;
+        dH = width / imgRatio;
+        oX = 0;
+        oY = (height - dH) / 2;
       }
 
       ctx.globalAlpha = opacity;
-      ctx.drawImage(img, offsetX, offsetY, drawWidth, drawHeight);
+      ctx.drawImage(img, oX, oY, dW, dH);
       return true;
     };
 
-    // Draw frame 1 (base)
-    const success1 = drawFrame(img1, 1);
+    // Draw base frame
+    const ready1 = drawImg(img1, 1);
     
-    // Draw frame 2 (overlay) with ratio opacity for smooth cross-fade
-    if (success1 && ratio > 0.05 && img2) {
-      drawFrame(img2, ratio);
+    // Draw cross-fade frame
+    if (ready1 && ratio > 0.01 && img2) {
+      drawImg(img2, ratio);
     }
+  }, [getImagePath, progress]);
 
-    // If images aren't ready, set onload to re-trigger render
-    if (!img1.complete) img1.onload = () => render(val);
-    if (img2 && !img2.complete) img2.onload = () => render(val);
-    
-  }, [getImagePath]);
-
-  // Handle resize and initial render
+  // Unified Rendering Loop
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext("2d", { alpha: false });
     if (!ctx) return;
 
+    let rafId: number;
+    const loop = () => {
+      render();
+      rafId = requestAnimationFrame(loop);
+    };
+
     const handleResize = () => {
       const dpr = window.devicePixelRatio || 1;
       canvas.width = window.innerWidth * dpr;
       canvas.height = window.innerHeight * dpr;
       ctx.scale(dpr, dpr);
-      render(progress.get());
+      render();
     };
 
     handleResize();
     window.addEventListener("resize", handleResize);
-    
-    const unsubscribe = progress.on("change", (latest: number) => {
-      render(latest);
-    });
+    rafId = requestAnimationFrame(loop);
 
     return () => {
       window.removeEventListener("resize", handleResize);
-      unsubscribe();
+      cancelAnimationFrame(rafId);
     };
-  }, [progress, render]);
-
-  // Re-render when new images are loaded to update the view
-  useEffect(() => {
-    if (loadedCount > 0) {
-      render(progress.get());
-    }
-  }, [loadedCount, progress, render]);
+  }, [render]);
 
   return (
     <div className="sticky top-0 w-full h-[100dvh] z-0 pointer-events-none overflow-hidden bg-black">

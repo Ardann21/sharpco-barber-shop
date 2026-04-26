@@ -13,8 +13,8 @@ export default function Home() {
   });
 
   const smoothProgress = useSpring(scrollYProgress, {
-    stiffness: 25,
-    damping: 20,
+    stiffness: 60,
+    damping: 30,
     restDelta: 0.001
   });
 

@@ -7,8 +7,6 @@ export const ImageSequence = ({ progress }: { progress: any }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [loadedCount, setLoadedCount] = useState(0);
   const imagesRef = useRef<HTMLImageElement[]>([]);
-  const lastRenderedFrame = useRef<number>(-1);
-  const requestRef = useRef<number>(0);
   
   const getImagePath = useCallback((index: number) => {
     const fileName = (index + 1).toString().padStart(4, "0");
@@ -27,6 +25,7 @@ export const ImageSequence = ({ progress }: { progress: any }) => {
     }
     imagesRef.current = imgArray;
 
+    // Start loading images in batches
     let isMounted = true;
     const loadBatch = async (start: number) => {
       const end = Math.min(start + PRELOAD_BATCH_SIZE, TOTAL_FRAMES);
@@ -37,7 +36,10 @@ export const ImageSequence = ({ progress }: { progress: any }) => {
         if (!img.src) {
           promises.push(new Promise((resolve) => {
             img.onload = resolve;
-            img.onerror = () => resolve(null);
+            img.onerror = () => {
+              console.error(`Failed to load image: ${img.src}`);
+              resolve(null);
+            };
             img.src = getImagePath(i);
           }));
         }
@@ -56,7 +58,7 @@ export const ImageSequence = ({ progress }: { progress: any }) => {
     return () => { isMounted = false; };
   }, [getImagePath]);
 
-  // Optimized Render Function
+  // Main render logic
   const render = useCallback((val: number) => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -68,21 +70,20 @@ export const ImageSequence = ({ progress }: { progress: any }) => {
       Math.floor(val * TOTAL_FRAMES)
     );
 
-    // Skip if we're already showing this frame
-    if (frameIndex === lastRenderedFrame.current) return;
-
     const img = imagesRef.current[Math.max(0, frameIndex)];
     if (!img) return;
 
+    // IMPORTANT: If image doesn't have a src yet (preloader hasn't reached it), 
+    // load it immediately to avoid freezing during scroll.
     if (!img.src) {
       img.src = getImagePath(Math.max(0, frameIndex));
     }
 
     const draw = () => {
       if (!canvas || !ctx) return;
+      const { width, height } = canvas;
       if (!img.complete || img.naturalWidth === 0) return;
 
-      const { width, height } = canvas;
       const imgRatio = img.naturalWidth / img.naturalHeight;
       const canvasRatio = width / height;
 
@@ -91,7 +92,7 @@ export const ImageSequence = ({ progress }: { progress: any }) => {
       if (imgRatio > canvasRatio) {
         drawHeight = height;
         drawWidth = height * imgRatio;
-        offsetX = (width - drawWidth) * 0.3;
+        offsetX = (width - drawWidth) * 0.3; // Focus on the chair
         offsetY = 0;
       } else {
         drawWidth = width;
@@ -101,18 +102,16 @@ export const ImageSequence = ({ progress }: { progress: any }) => {
       }
 
       ctx.drawImage(img, offsetX, offsetY, drawWidth, drawHeight);
-      lastRenderedFrame.current = frameIndex;
     };
 
     if (img.complete) {
-      // Use requestAnimationFrame for smoother updates
-      if (requestRef.current) cancelAnimationFrame(requestRef.current);
-      requestRef.current = requestAnimationFrame(draw);
+      draw();
     } else {
       img.onload = draw;
     }
   }, [getImagePath]);
 
+  // Handle resize and initial render
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -124,7 +123,6 @@ export const ImageSequence = ({ progress }: { progress: any }) => {
       canvas.width = window.innerWidth * dpr;
       canvas.height = window.innerHeight * dpr;
       ctx.scale(dpr, dpr);
-      lastRenderedFrame.current = -1; // Force re-render
       render(progress.get());
     };
 
@@ -138,10 +136,10 @@ export const ImageSequence = ({ progress }: { progress: any }) => {
     return () => {
       window.removeEventListener("resize", handleResize);
       unsubscribe();
-      if (requestRef.current) cancelAnimationFrame(requestRef.current);
     };
   }, [progress, render]);
 
+  // Re-render when new images are loaded to update the view
   useEffect(() => {
     if (loadedCount > 0) {
       render(progress.get());
@@ -155,6 +153,7 @@ export const ImageSequence = ({ progress }: { progress: any }) => {
         style={{
           width: '100%',
           height: '100%',
+          filter: 'contrast(1.1) brightness(1.05) saturate(1.05)',
           imageRendering: '-webkit-optimize-contrast' as any
         }}
         className="object-cover"
